@@ -2,9 +2,11 @@
 
 namespace trading {
 
-class Simulator {
-public:
-    [[nodiscard]] const char* status() const noexcept;
-};
+    class Simulator {
+        public: 
+        [[nodiscard]] const char* status() const noexcept;
 
-} // namespace trading
+    };
+
+    
+} //namespace trading

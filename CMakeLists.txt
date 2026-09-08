@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(trading_simulator VERSION 0.1.0 LANGUAGES CXX)
-
-# Export the exact compiler commands for editor tools such as IntelliSense.
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+project(
+    trading_simulator
+    VERSION 0.1.0
+    LANGUAGES CXX
+)
 
 add_library(trading_core STATIC
-    src/Order.cpp
     src/Simulator.cpp
 )
 
@@ -21,7 +21,10 @@ add_executable(trading-simulator
     src/main.cpp
 )
 
-target_link_libraries(trading-simulator PRIVATE trading_core)
+target_link_libraries(trading-simulator
+    PRIVATE
+        trading_core
+)
 
 if(MSVC)
     target_compile_options(trading_core PRIVATE /W4)
@@ -38,21 +41,19 @@ if(BUILD_TESTING)
         tests/test_main.cpp
     )
 
-    add_executable(order-tests
-        tests/test_order.cpp
+    target_link_libraries(trading-tests
+        PRIVATE
+            trading_core
     )
-
-    target_link_libraries(trading-tests PRIVATE trading_core)
-    target_link_libraries(order-tests PRIVATE trading_core)
 
     if(MSVC)
         target_compile_options(trading-tests PRIVATE /W4)
-        target_compile_options(order-tests PRIVATE /W4)
     else()
         target_compile_options(trading-tests PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(order-tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_test(NAME simulator-startup COMMAND trading-tests)
-    add_test(NAME order-tests COMMAND order-tests)
+    add_test(
+        NAME simulator-startup
+        COMMAND trading-tests
+    )
 endif()
