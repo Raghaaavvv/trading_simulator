@@ -7,7 +7,10 @@ project(
 )
 
 add_library(trading_core STATIC
+    src/OrderBook.cpp
+    src/Order.cpp
     src/Simulator.cpp
+
 )
 
 target_include_directories(trading_core
@@ -56,4 +59,45 @@ if(BUILD_TESTING)
         NAME simulator-startup
         COMMAND trading-tests
     )
+
+    add_executable(order-tests
+        tests/test_order.cpp
+    )
+
+    target_link_libraries(order-tests
+        PRIVATE
+            trading_core
+    )
+
+    if(MSVC)
+        target_compile_options(order-tests PRIVATE /W4)
+    else()
+        target_compile_options(order-tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME order-tests
+        COMMAND order-tests
+    )
+
+    add_executable(order-book-tests
+        tests/test_order_book.cpp
+    )
+
+    target_link_libraries(order-book-tests
+        PRIVATE
+            trading_core
+    )
+
+    if (MSVC)
+        target_compile_options(order-book-tests PRIVATE /W4)
+    else()
+        target_compile_options(order-book-tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME order-book-tests
+        COMMAND order-book-tests
+    )
+    
 endif()
