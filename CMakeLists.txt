@@ -7,6 +7,7 @@ project(
 )
 
 add_library(trading_core STATIC
+    src/MatchingEngine.cpp
     src/OrderBook.cpp
     src/Order.cpp
     src/Simulator.cpp
@@ -40,6 +41,14 @@ endif()
 include(CTest)
 
 if(BUILD_TESTING)
+    add_executable(matching-engine-tests tests/test_matching_engine.cpp)
+    target_link_libraries(matching-engine-tests PRIVATE trading_core)
+    if(MSVC)
+        target_compile_options(matching-engine-tests PRIVATE /W4)
+    else()
+        target_compile_options(matching-engine-tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME matching-engine-tests COMMAND matching-engine-tests)
     add_executable(trading-tests
         tests/test_main.cpp
     )
