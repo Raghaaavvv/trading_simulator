@@ -1,0 +1,6 @@
+event,id,side,type,price,quantity,timestamp
+NEW,1,SELL,LIMIT,10100,100,30
+NEW,2,SELL,LIMIT,10100,50,10
+NEW,3,BUY,LIMIT,10100,120,20
+CANCEL,2,,,,,40
+NEW,4,BUY,MARKET,,10,50

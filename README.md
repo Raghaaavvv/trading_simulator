@@ -10,9 +10,9 @@ microstructure, testing, data structures, and performance engineering.
 
 ## Current status
 
-Phases 1–4 are complete at the initial functional level. The next phase is
-market data and event dispatch. The engine currently runs through its C++ API
-and automated tests; the command-line application still prints a startup message.
+Phases 1–6 are complete at the initial functional level. The command-line
+application can now replay synthetic order-event CSV files through the dispatcher
+and matching engine, optionally with a strategy. Historical-data adapters come later.
 
 Currently implemented:
 
@@ -30,10 +30,13 @@ Currently implemented:
 - Cancellation by ID, empty-level cleanup, and duplicate resting-ID rejection
 - A separate matching engine supporting price-time priority and multi-level execution
 - Trade records with maker/taker IDs, taker side, execution price, quantity, and timestamp
-- CTest integration with four passing test suites
+- FIFO event dispatch with immediate trade notifications to a market monitor
+- Strict CSV event parsing and a command-line replay demonstration
+- Read-only strategy snapshots, requested actions, ownership tracking, and fill feedback
+- An example threshold-based buy strategy
+- Eight passing CTest entries (six test executables and two CLI replay smoke tests)
 
-The event system, market-data replay, strategies, and portfolio analytics are
-planned features.
+Real historical datasets, more advanced strategies, and portfolio analytics are planned features.
 
 ## Matching behavior and design
 
@@ -122,19 +125,28 @@ trading-simulator/
 ├── CMakeLists.txt
 ├── include/
 │   └── trading/
+│       ├── CsvMarketDataFeed.hpp
+│       ├── Event.hpp
+│       ├── EventDispatcher.hpp
 │       ├── MatchingEngine.hpp
 │       ├── Order.hpp
 │       ├── OrderBook.hpp
 │       ├── Trade.hpp
+│       ├── Strategy.hpp
 │       └── Simulator.hpp
 ├── src/
 │   ├── main.cpp
+│   ├── CsvMarketDataFeed.cpp
+│   ├── EventDispatcher.cpp
 │   ├── MatchingEngine.cpp
 │   ├── Order.cpp
 │   ├── OrderBook.cpp
+│   ├── Strategy.cpp
 │   └── Simulator.cpp
 ├── tests/
 │   ├── test_main.cpp
+│   ├── test_events.cpp
+│   ├── test_strategy.cpp
 │   ├── test_matching_engine.cpp
 │   ├── test_order.cpp
 │   └── test_order_book.cpp
@@ -187,8 +199,91 @@ Matching tests cover both sides, multi-level sweeps, maker-price execution,
 limit boundaries, resting remainders, market remainder cancellation, and
 rejection before execution.
 
-CTest runs four test executables, each containing multiple checks:
-`simulator-startup`, `order-tests`, `order-book-tests`, and `matching-engine-tests`.
+CTest runs six test executables, each containing multiple checks:
+`simulator-startup`, `order-tests`, `order-book-tests`, `matching-engine-tests`,
+`event-tests`, and `strategy-tests`. `csv-replay` and `strategy-replay` exercise
+the CLI with and without a strategy.
+Event tests cover arrival ordering, timestamp ties, notifications, rejection
+handling, cancellation timing, and CSV validation.
+
+## Event dispatch and CSV replay
+
+```bash
+./build/trading-simulator data/example_events.csv
+```
+
+The feed produces `NewOrderEvent` and `CancelOrderEvent` values stored in a
+`std::variant`. `EventDispatcher` queues them in a `std::deque` and processes
+them strictly in input order. It assigns a monotonically increasing sequence
+across runs. Timestamps are caller metadata and never determine queue priority;
+equal or decreasing timestamps are accepted. `MarketMonitor` records each trade
+immediately after the triggering submission, before dispatching the next event.
+
+The exact CSV header and example rows are:
+
+```csv
+event,id,side,type,price,quantity,timestamp
+NEW,1,SELL,LIMIT,10100,100,30
+NEW,2,SELL,LIMIT,10100,50,10
+NEW,3,BUY,LIMIT,10100,120,20
+CANCEL,2,,,,,40
+NEW,4,BUY,MARKET,,10,50
+```
+
+Prices are integer ticks. IDs and quantities must be positive; timestamps are
+nonnegative integers. Market prices must be blank. For cancellations, the side,
+type, price, and quantity columns must be blank. Tokens are uppercase, and quoting
+or surrounding whitespace is not supported. Blank lines and CRLF are accepted.
+The sample produces two trades (100 then 20 units), cancels the remaining ask,
+and cancels the final market order's unfilled quantity.
+
+The entire CSV is parsed before execution. Malformed rows abort replay with a
+line-numbered error. Validly formed events rejected by the engine, such as a
+duplicate resting ID, produce rejection records and replay continues. Unknown
+cancellation IDs produce a not-found result. The CLI exits successfully after a
+completed replay even when individual events were rejected; input/file errors
+exit with status 1. Unexpected resource failures abort processing; recovery or
+retry after such failures is not implemented. Replay and monitoring currently
+retain all events/results/trades in memory.
+
+This format describes synthetic exchange events, not OHLC price bars or an
+adapter for any particular historical vendor dataset.
+
+## Strategy boundary
+
+Strategies implement `Strategy::on_market_update(const MarketView&)` and return
+a vector of requested `Event` actions. `MarketView` is a value snapshot containing
+only best bid, best ask, sequence, and timestamp. It provides no engine, book,
+or mutable container access. Mutating a retained copy cannot change exchange state.
+
+The dispatcher owns one optional strategy through `std::unique_ptr<Strategy>`.
+After each external event, it delivers fill notifications, takes a snapshot,
+and invokes the strategy. Returned actions execute in vector order before the
+next external event. Actions use normal engine validation and receive
+`on_action_result` feedback, including rejections and cancellation outcomes.
+Actions do not recursively trigger market-update callbacks. This is a synchronous,
+zero-simulated-latency policy; there are no extra threads or network messages.
+
+The dispatcher tracks strategy-owned resting IDs and sends `on_fill` notifications
+for its maker and taker executions. A strategy cannot cancel another participant's
+order. Ownership is removed on full execution or cancellation; reusing a completed
+ID externally does not inherit strategy ownership. IDs share the exchange's
+namespace, so configure the strategy with an ID not used by resting feed orders.
+Strategy callback exceptions abort the run; callbacks should not throw, and
+automatic recovery after callback/resource failures is not implemented.
+
+Run the one-shot `BuyBelowStrategy` example (prices in ticks):
+
+```bash
+./build/trading-simulator data/example_events.csv --buy-below 10100 10 100
+```
+
+This requests one buy limit order with ID 100, quantity 10, and limit 10100
+when the best ask is at most 10100. It makes one attempt, even if rejected;
+it is an interface demonstration rather than a profitability claim. Strategy
+results are marked `[strategy]` in CLI output. Positions, cash, and P&L are
+not tracked yet. Tests exercise read-only access, action ordering, feedback,
+ownership restrictions, fill routing, and the example strategy.
 
 ## Development roadmap
 
@@ -196,8 +291,8 @@ CTest runs four test executables, each containing multiple checks:
 - [x] Phase 2: Order and trade models
 - [x] Phase 3: Price-time-priority limit order book
 - [x] Phase 4: Matching engine and partial fills
-- [ ] Phase 5: Market data and event dispatch
-- [ ] Phase 6: Trading strategy interface
+- [x] Phase 5: Market data and event dispatch (synthetic CSV replay)
+- [x] Phase 6: Trading strategy interface and example strategy
 - [ ] Phase 7: Positions and P&L accounting
 - [ ] Phase 8: Historical market-data replay and backtesting
 - [ ] Phase 9: Benchmarking and profiling

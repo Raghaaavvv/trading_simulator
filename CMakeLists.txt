@@ -7,6 +7,9 @@ project(
 )
 
 add_library(trading_core STATIC
+    src/Strategy.cpp
+    src/EventDispatcher.cpp
+    src/CsvMarketDataFeed.cpp
     src/MatchingEngine.cpp
     src/OrderBook.cpp
     src/Order.cpp
@@ -41,6 +44,25 @@ endif()
 include(CTest)
 
 if(BUILD_TESTING)
+    add_executable(strategy-tests tests/test_strategy.cpp)
+    target_link_libraries(strategy-tests PRIVATE trading_core)
+    if(MSVC)
+        target_compile_options(strategy-tests PRIVATE /W4)
+    else()
+        target_compile_options(strategy-tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME strategy-tests COMMAND strategy-tests)
+    add_test(NAME strategy-replay COMMAND trading-simulator
+        ${CMAKE_CURRENT_SOURCE_DIR}/data/example_events.csv --buy-below 10100 10 100)
+    add_executable(event-tests tests/test_events.cpp)
+    target_link_libraries(event-tests PRIVATE trading_core)
+    if(MSVC)
+        target_compile_options(event-tests PRIVATE /W4)
+    else()
+        target_compile_options(event-tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME event-tests COMMAND event-tests)
+    add_test(NAME csv-replay COMMAND trading-simulator ${CMAKE_CURRENT_SOURCE_DIR}/data/example_events.csv)
     add_executable(matching-engine-tests tests/test_matching_engine.cpp)
     target_link_libraries(matching-engine-tests PRIVATE trading_core)
     if(MSVC)
